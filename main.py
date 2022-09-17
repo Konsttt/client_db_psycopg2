@@ -1,172 +1,159 @@
 import psycopg2
 
 
-def create_db(conn):
-    with conn.cursor() as cur:
-        cur.execute("""
-                CREATE TABLE IF NOT EXISTS client(
-                    id SERIAL PRIMARY KEY,
-                    first_name VARCHAR(40),
-                    last_name VARCHAR(40),
-                    email VARCHAR(40) UNIQUE
-                );
-                """)
-        cur.execute("""CREATE TABLE IF NOT EXISTS tel(
-                    id SERIAL PRIMARY KEY,
-                    client_id INTEGER NOT NULL REFERENCES client(id),
-                    phone VARCHAR(20)
-                );
-                """)
-    conn.commit()
+def create_db(cur):
+    cur.execute("""
+            CREATE TABLE IF NOT EXISTS client(
+                id SERIAL PRIMARY KEY,
+                first_name VARCHAR(40),
+                last_name VARCHAR(40),
+                email VARCHAR(40) UNIQUE
+            );
+            """)
+    cur.execute("""CREATE TABLE IF NOT EXISTS tel(
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER NOT NULL REFERENCES client(id),
+                phone VARCHAR(20)
+            );
+            """)
 
 
-def add_client(conn, first_name, last_name, email, phone=None):
-    with conn.cursor() as cur:
-        cur.execute("""
-                INSERT INTO client(first_name, last_name, email) VALUES(%s, %s, %s) RETURNING id;
-                """, (first_name, last_name, email))
-        client_id = cur.fetchone()[0]
-        if phone:
-            cur.execute("""    
-                INSERT INTO tel(client_id, phone) VALUES(%s, %s);
-                """, (client_id, phone))
-        conn.commit()
-
-
-def add_phone(conn, client_id, phone):
-    with conn.cursor() as cur:
+def add_client(cur, first_name, last_name, email, phone=None):
+    cur.execute("""
+            INSERT INTO client(first_name, last_name, email) VALUES(%s, %s, %s) RETURNING id;
+            """, (first_name, last_name, email))
+    client_id = cur.fetchone()[0]
+    if phone:
         cur.execute("""    
-                INSERT INTO tel(client_id, phone) VALUES(%s, %s);
-                """, (client_id, phone))
-        conn.commit()
-
-
-def change_client(conn, client_id, first_name=None, last_name=None, email=None, phone=None):
-    with conn.cursor() as cur:
-        if first_name:
-            cur.execute("""
-                UPDATE client SET first_name=%s WHERE id=%s;
-                """, (first_name, client_id))
-        if last_name:
-            cur.execute("""
-                UPDATE client SET last_name=%s WHERE id=%s;
-                """, (last_name, client_id))
-        if email:
-            cur.execute("""
-                UPDATE client SET email=%s WHERE id=%s;
-                """, (email, client_id))
-        if phone:
-            cur.execute("""
-                UPDATE tel SET phone=%s WHERE client_id=%s;
-                """, (phone, client_id))
-        conn.commit()
-
-
-def delete_phone(conn, client_id, phone):
-    with conn.cursor() as cur:
-        cur.execute("""
-            DELETE FROM tel WHERE client_id=%s AND phone=%s;
+            INSERT INTO tel(client_id, phone) VALUES(%s, %s);
             """, (client_id, phone))
-        conn.commit()
 
 
-def delete_client(conn, client_id):
-    with conn.cursor() as cur:
+def add_phone(cur, client_id, phone):
+    cur.execute("""    
+            INSERT INTO tel(client_id, phone) VALUES(%s, %s);
+            """, (client_id, phone))
+
+
+def change_client(cur, client_id, first_name=None, last_name=None, email=None, phone=None):
+    if first_name:
         cur.execute("""
-            DELETE FROM tel WHERE client_id=%s;
-            """, (client_id,))
+            UPDATE client SET first_name=%s WHERE id=%s;
+            """, (first_name, client_id))
+    if last_name:
         cur.execute("""
-            DELETE FROM client WHERE id=%s;
+            UPDATE client SET last_name=%s WHERE id=%s;
+            """, (last_name, client_id))
+    if email:
+        cur.execute("""
+            UPDATE client SET email=%s WHERE id=%s;
+            """, (email, client_id))
+    if phone:
+        cur.execute("""
+            UPDATE tel SET phone=%s WHERE client_id=%s;
+            """, (phone, client_id))
+
+
+def delete_phone(cur, client_id, phone):
+    cur.execute("""
+        DELETE FROM tel WHERE client_id=%s AND phone=%s;
+        """, (client_id, phone))
+
+
+def delete_client(cur, client_id):
+    cur.execute("""
+        DELETE FROM tel WHERE client_id=%s;
         """, (client_id,))
-        conn.commit()
+    cur.execute("""
+        DELETE FROM client WHERE id=%s;
+    """, (client_id,))
 
 
 # Перебраны все комбинации полноты ввода пользователем данных для поиска
-def find_client(conn, first_name=None, last_name=None, email=None, phone=None):
-    with conn.cursor() as cur:
-        if first_name and not last_name and not email and not phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email FROM client WHERE first_name=%s;
-                """, (first_name,))
-            list_tuple_client = cur.fetchall()
-            return fetch_to_list(cur, list_tuple_client)
-        elif not first_name and last_name and not email and not phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email FROM client WHERE last_name=%s;
-                """, (last_name,))
-            list_tuple_client = cur.fetchall()
-            return fetch_to_list(cur, list_tuple_client)
-        elif not first_name and not last_name and email and not phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email FROM client WHERE email=%s;
-                """, (email,))
-            list_tuple_client = cur.fetchall()
-            return fetch_to_list(cur, list_tuple_client)
-        elif not first_name and not last_name and not email and phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email 
-                FROM client 
-                WHERE id IN (SELECT client_id FROM tel WHERE phone=%s);
-                """, (phone,))
-            list_tuple_client = cur.fetchall()
-        elif first_name and last_name and not email and not phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email FROM client WHERE first_name=%s and last_name=%s;
-                """, (first_name, last_name))
-            list_tuple_client = cur.fetchall()
-        elif first_name and not last_name and email and not phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email FROM client WHERE first_name=%s and email=%s;
-                """, (first_name, email))
-            list_tuple_client = cur.fetchall()
-        elif first_name and not last_name and not email and phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email 
-                FROM client 
-                WHERE first_name=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
-                """, (first_name, phone))
-            list_tuple_client = cur.fetchall()
-        elif first_name and last_name and email and not phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email FROM client WHERE first_name=%s and last_name=%s and email=%s;
-                """, (first_name, last_name, email))
-            list_tuple_client = cur.fetchall()
-        elif first_name and last_name and not email and phone:
-            cur.execute("""
-                SELECT id, first_name, last_name, email 
-                FROM client 
-                WHERE first_name=%s and last_name=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
-                """, (first_name, last_name, phone))
-            list_tuple_client = cur.fetchall()
-        elif first_name and last_name and email and phone:
-            cur.execute("""
-                       SELECT id, first_name, last_name, email 
-                       FROM client 
-                       WHERE first_name=%s and last_name=%s and email=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
-                       """, (first_name, last_name, email, phone))
-            list_tuple_client = cur.fetchall()
-        elif not first_name and last_name and email and phone:
-            cur.execute("""
-                       SELECT id, first_name, last_name, email 
-                       FROM client 
-                       WHERE last_name=%s and email=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
-                       """, (last_name, email, phone))
-            list_tuple_client = cur.fetchall()
-        elif not first_name and last_name and not email and phone:
-            cur.execute("""
-                       SELECT id, first_name, last_name, email 
-                       FROM client 
-                       WHERE last_name=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
-                       """, (last_name, phone))
-            list_tuple_client = cur.fetchall()
-        elif not first_name and not last_name and email and phone:
-            cur.execute("""
-                       SELECT id, first_name, last_name, email 
-                       FROM client 
-                       WHERE email=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
-                       """, (email, phone))
-            list_tuple_client = cur.fetchall()
+def find_client(cur, first_name=None, last_name=None, email=None, phone=None):
+    if first_name and not last_name and not email and not phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email FROM client WHERE first_name=%s;
+            """, (first_name,))
+        list_tuple_client = cur.fetchall()
         return fetch_to_list(cur, list_tuple_client)
+    elif not first_name and last_name and not email and not phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email FROM client WHERE last_name=%s;
+            """, (last_name,))
+        list_tuple_client = cur.fetchall()
+        return fetch_to_list(cur, list_tuple_client)
+    elif not first_name and not last_name and email and not phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email FROM client WHERE email=%s;
+            """, (email,))
+        list_tuple_client = cur.fetchall()
+        return fetch_to_list(cur, list_tuple_client)
+    elif not first_name and not last_name and not email and phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email 
+            FROM client 
+            WHERE id IN (SELECT client_id FROM tel WHERE phone=%s);
+            """, (phone,))
+        list_tuple_client = cur.fetchall()
+    elif first_name and last_name and not email and not phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email FROM client WHERE first_name=%s and last_name=%s;
+            """, (first_name, last_name))
+        list_tuple_client = cur.fetchall()
+    elif first_name and not last_name and email and not phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email FROM client WHERE first_name=%s and email=%s;
+            """, (first_name, email))
+        list_tuple_client = cur.fetchall()
+    elif first_name and not last_name and not email and phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email 
+            FROM client 
+            WHERE first_name=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
+            """, (first_name, phone))
+        list_tuple_client = cur.fetchall()
+    elif first_name and last_name and email and not phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email FROM client WHERE first_name=%s and last_name=%s and email=%s;
+            """, (first_name, last_name, email))
+        list_tuple_client = cur.fetchall()
+    elif first_name and last_name and not email and phone:
+        cur.execute("""
+            SELECT id, first_name, last_name, email 
+            FROM client 
+            WHERE first_name=%s and last_name=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
+            """, (first_name, last_name, phone))
+        list_tuple_client = cur.fetchall()
+    elif first_name and last_name and email and phone:
+        cur.execute("""
+                   SELECT id, first_name, last_name, email 
+                   FROM client 
+                   WHERE first_name=%s and last_name=%s and email=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
+                   """, (first_name, last_name, email, phone))
+        list_tuple_client = cur.fetchall()
+    elif not first_name and last_name and email and phone:
+        cur.execute("""
+                   SELECT id, first_name, last_name, email 
+                   FROM client 
+                   WHERE last_name=%s and email=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
+                   """, (last_name, email, phone))
+        list_tuple_client = cur.fetchall()
+    elif not first_name and last_name and not email and phone:
+        cur.execute("""
+                   SELECT id, first_name, last_name, email 
+                   FROM client 
+                   WHERE last_name=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
+                   """, (last_name, phone))
+        list_tuple_client = cur.fetchall()
+    elif not first_name and not last_name and email and phone:
+        cur.execute("""
+                   SELECT id, first_name, last_name, email 
+                   FROM client 
+                   WHERE email=%s and id IN (SELECT client_id FROM tel WHERE phone=%s);
+                   """, (email, phone))
+        list_tuple_client = cur.fetchall()
+    return fetch_to_list(cur, list_tuple_client)
 
 
 # Вспомогательная функция обработки списка кортежей после выборки из БД
@@ -211,7 +198,7 @@ def print_find_result(list_result):
             print()
 
 
-def dialog_db(conn):
+def dialog_db(cur):
     print("Программа работы с базой данных clients_db.")
     print("Введите '?' для справки по командам.")
     flag = True
@@ -227,42 +214,51 @@ def dialog_db(conn):
                'f' - найти клиента в БД\n\
                'q' - выход из программы")
         elif command_ == 'с':
-            create_db(conn)
+            create_db(cur)
         elif command_ == 'a':
             f_name = input('Введите имя клиента: ')
             l_name = input('Введите фамилию клиента: ')
             email_c = input('Введите email клиента: ')
             phone_c = input('Введите телефон клиента или пропустите, нажав Enter: ')
-            add_client(conn, f_name, l_name, email_c, phone_c)
+            add_client(cur, f_name, l_name, email_c, phone_c)
         elif command_ == 'p':
             c_id = input('Введите id клиента: ')
             phone_c = input('Введите телефон клиента: ')
-            add_phone(conn, c_id, phone_c)
+            add_phone(cur, c_id, phone_c)
         elif command_ == 'ch':
             id_c = input('Введите id клиента данные которого будут изменены: ')
             f_name = input('Введите имя клиента или пропустите, нажав Enter: ')
             l_name = input('Введите фамилию клиента или пропустите, нажав Enter: ')
             email_c = input('Введите email клиента или пропустите, нажав Enter: ')
             phone_c = input('Введите телефон клиента или пропустите, нажав Enter: ')
-            change_client(conn, id_c, f_name, l_name, email_c, phone_c)
+            change_client(cur, id_c, f_name, l_name, email_c, phone_c)
         elif command_ == 'd':
             id_c = input('Введите id клиента, все данные которого будут удалены из БД: ')
-            delete_client(conn, id_c)
+            delete_client(cur, id_c)
         elif command_ == 'dp':
             id_c = input('Введите id клиента, телефон которого хотите удалить: ')
             phone_c = input('Введите телефон клиента: ')
-            delete_phone(conn, id_c, phone_c)
+            delete_phone(cur, id_c, phone_c)
         elif command_ == 'f':
             f_name = input('Для поиска по имени введите имя клиента или пропустите, нажав Enter: ')
             l_name = input('Для поиска по фамилии введите фамилию клиента или пропустите, нажав Enter: ')
             email_c = input('Для поиска по email введите email клиента или пропустите, нажав Enter: ')
             phone_c = input('Для поиска по телефону введите телефон клиента или пропустите, нажав Enter: ')
-            print_find_result(find_client(conn, f_name, l_name, email_c, phone_c))
+            print_find_result(find_client(cur, f_name, l_name, email_c, phone_c))
         elif command_ == 'q':
             flag = False
             print('Завершение работы. Выполнен выход из программы.')
 
 
-with psycopg2.connect(database="clients_db", user="postgres", password="Your_password") as conn:
-    dialog_db(conn)
-conn.close()
+if __name__ == "__main__":
+    with psycopg2.connect(database="clients_db", user="postgres", password="Cgfc29Z+") as conn:
+        with conn.cursor() as cur1:
+            dialog_db(cur1)
+    conn.close()
+
+# 1. cursor в каждой функции можно не прописывать, а реализовать контекстный менеджер with conn.cursor() as ...
+# именно при совершении всех действий и передавать его в качестве аргумента при вызове функций;
+# контекстный менеджер подключения сам по себе делает commit после всех операций в нем,
+# поэтому отдельно их можно не прописывать;
+# 2. не забывайте про if __name__ == “__main__”:
+# https://ru.stackoverflow.com/questions/515852/Что-делают-if-name-main, финальные вызовы лучше помещать в него.
